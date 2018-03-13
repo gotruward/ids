@@ -1,34 +1,34 @@
-package semantic_id
+package semanticid
 
 import (
-	"testing"
 	"bytes"
 	"math/rand"
+	"testing"
 	"unicode"
 )
 
-func checkDecodingID(idgen IDCodec, id SemanticID, idValue []byte, t *testing.T) {
-	newIdValue, err := idgen.Decode(id)
+func checkDecodingID(idgen IDCodec, id string, idValue []byte, t *testing.T) {
+	newIDValue, err := idgen.Decode(id)
 	if err != nil {
 		t.Fatalf("id decoding failed for id=%s, err is not nil: %s", id, err)
 	}
 
-	if bytes.Compare(newIdValue, idValue) != 0 {
+	if bytes.Compare(newIDValue, idValue) != 0 {
 		t.Fatalf(
 			"id decoding is wrong for id=%s: expected value=%s, actual value=%s",
 			id,
 			idValue,
-			newIdValue)
+			newIDValue)
 	}
 }
 
 func TestSemanticID(t *testing.T) {
 
 	t.Run("unprefixed fixed semantic IDs", func(t *testing.T) {
-		pairs := map[SemanticID][]byte{
-			"00": {0},
-			"10": {1},
-			"z7": {255},
+		pairs := map[string][]byte{
+			"00":       {0},
+			"10":       {1},
+			"z7":       {255},
 			"1802g040": {1, 1, 1, 1, 1},
 		}
 
@@ -85,7 +85,7 @@ func TestSemanticID(t *testing.T) {
 					}
 				}
 
-				checkDecodingID(idgen, SemanticID(buf.String()), idValue, t)
+				checkDecodingID(idgen, string(buf.String()), idValue, t)
 			}
 		}
 	})
@@ -120,15 +120,15 @@ func TestSemanticID(t *testing.T) {
 			t.Error("empty byte array shall not be encoded")
 		}
 
-		_, err = idgen.Encode(make([]byte, MaxBytesIDSize + 1))
+		_, err = idgen.Encode(make([]byte, MaxBytesIDSize+1))
 		if err != ErrIDTooBig {
 			t.Error("large array should not be encoded")
 		}
 	})
 
 	t.Run("decode malformed semantic IDs", func(t *testing.T) {
-		prefixes := map[SemanticID][]string{
-			"": {},
+		prefixes := map[string][]string{
+			"":     {},
 			"abc-": {"abc"},
 			"a-b-": {"a", "b"},
 		}
@@ -143,7 +143,7 @@ func TestSemanticID(t *testing.T) {
 
 	t.Run("decode invalid chars in semantic IDs", func(t *testing.T) {
 		prefixes := map[string][]string{
-			"": {},
+			"":     {},
 			"abc-": {"abc"},
 			"a-b-": {"a", "b"},
 		}
@@ -151,13 +151,13 @@ func TestSemanticID(t *testing.T) {
 			idgen := NewCodecForNames(v...)
 
 			// sanity check: idgen should allow decoding legitimate IDs
-			_, err := idgen.Decode(SemanticID(k + "00"))
+			_, err := idgen.Decode(k + "00")
 			if err != nil {
 				t.Fatal("decode shall allow legitimate characters")
 			}
 
 			// actual verification for illegal characters
-			_, err = idgen.Decode(SemanticID(k + "0!"))
+			_, err = idgen.Decode(k + "0!")
 			if err != ErrInvalidChar {
 				t.Error("decode shall prohibit IDs with illegal chars")
 			}

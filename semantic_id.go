@@ -1,34 +1,50 @@
-package semantic_id
+package semanticid
 
 import (
-	"errors"
 	"bytes"
-	"github.com/gotruward/semantic-id/gen"
+	"errors"
+	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/gotruward/semantic-id/gen"
 )
 
-type SemanticID string
-
+// MaxBytesIDSize defines upper bound limit for number of bytes in a given semantic ID
 const MaxBytesIDSize = 256
 
 var (
-	ErrIDTooBig    = errors.New("value is too big to be encoded into semantic ID")
-	ErrIDEmpty     = errors.New("can't encode empty value to semantic ID")
+	// ErrIDTooBig happens when given ID is too big to be encoded as semantic ID
+	// see also MaxBytesIDSize that defines this limit
+	ErrIDTooBig = errors.New("value is too big to be encoded into semantic ID")
+
+	// ErrIDEmpty happens when empty ID is asked to be decoded
+	ErrIDEmpty = errors.New("can't encode empty value to semantic ID")
+
+	// ErrInvalidChar happens when invalid character is found in a given semantic ID
 	ErrInvalidChar = errors.New("given semantic ID contains invalid character")
+
+	// ErrMalformedID happens when given semantic ID is malformed
 	ErrMalformedID = errors.New("invalid semantic ID")
-	ErrInternal    = errors.New("internal error while performing operation on semantic ID")
 )
 
-type IDCodec interface {
-
-	CanDecode(id SemanticID) bool
-
-	Encode(value []byte) (SemanticID, error)
-
-	Decode(id SemanticID) ([]byte, error)
+// GetPrefix returns prefix which is a part of a given semantic ID
+func GetPrefix(maybeSemanticID string) string {
+	return ""
 }
 
+// IDCodec defines an interface that abstracts out operations on the semantic IDs
+type IDCodec interface {
+	CanDecode(id string) bool
+
+	Encode(value []byte) (string, error)
+
+	Decode(id string) ([]byte, error)
+
+	GetPrefix() string
+}
+
+// NewCodecForNames creates IDCodec for a given sequence of names
 func NewCodecForNames(names ...string) IDCodec {
 	lowercasedNames := make([]string, len(names))
 	for index, name := range names {
@@ -59,7 +75,11 @@ func newBufferWithPrefix(names []string, capacity int) *bytes.Buffer {
 	return buf
 }
 
-func (c *prefixedIDCodec) CanDecode(id SemanticID) bool {
+func (c *prefixedIDCodec) GetPrefix() string {
+	return newBufferWithPrefix(c.Names).String()
+}
+
+func (c *prefixedIDCodec) CanDecode(id string) bool {
 	_, err := computeAndValidatePrefix(c, id)
 	if err != nil {
 		return false
@@ -68,7 +88,7 @@ func (c *prefixedIDCodec) CanDecode(id SemanticID) bool {
 	return true
 }
 
-func (c *prefixedIDCodec) Encode(value []byte) (SemanticID, error) {
+func (c *prefixedIDCodec) Encode(value []byte) (string, error) {
 	valueLen := len(value)
 	if value == nil || valueLen == 0 {
 		return "", ErrIDEmpty
@@ -82,12 +102,12 @@ func (c *prefixedIDCodec) Encode(value []byte) (SemanticID, error) {
 	buf := newBufferWithPrefix(c.Names, capacity)
 	appendBytes(value, buf)
 	if buf.Len() != capacity {
-		return "", ErrInternal // shouldn't happen
+		return "", fmt.Errorf("internal: unexpected buffer size") // shouldn't happen
 	}
-	return SemanticID(buf.String()), nil
+	return buf.String(), nil
 }
 
-func (c *prefixedIDCodec) Decode(id SemanticID) ([]byte, error) {
+func (c *prefixedIDCodec) Decode(id string) ([]byte, error) {
 	prefixLength, err := computeAndValidatePrefix(c, id)
 	if err != nil {
 		return nil, err
@@ -108,7 +128,7 @@ func getPrefixLength(names []string) int {
 	return result
 }
 
-func computeAndValidatePrefix(c *prefixedIDCodec, id SemanticID) (int, error) {
+func computeAndValidatePrefix(c *prefixedIDCodec, id string) (int, error) {
 	idLen := len(id)
 
 	charIndex := 0
@@ -172,7 +192,7 @@ func getBaseChar(index uint8) uint8 {
 	return gen.Chars[index]
 }
 
-func getBaseCharCode(value SemanticID, charPos uint) (uint8, error) {
+func getBaseCharCode(value string, charPos uint) (uint8, error) {
 	ch := int(value[int(charPos)])
 
 	if ch < len(gen.CharToIndex) {
@@ -186,7 +206,7 @@ func getBaseCharCode(value SemanticID, charPos uint) (uint8, error) {
 }
 
 func getEncodedSize(size uint) uint {
-	return (size * byteSize + baseBits - 1) / baseBits
+	return (size*byteSize + baseBits - 1) / baseBits
 }
 
 func appendBytes(body []byte, buf *bytes.Buffer) {
@@ -203,7 +223,7 @@ func appendBytes(body []byte, buf *bytes.Buffer) {
 		base32ElemIndex := (elem >> uint8(offsetBitPos)) & baseMask
 		if endBitPos > byteSize {
 			tailBitCount := endBitPos - byteSize
-			base32ElemIndex |= (body[startPosByte + 1] & ((1 << tailBitCount) - 1)) << (baseBits - tailBitCount)
+			base32ElemIndex |= (body[startPosByte+1] & ((1 << tailBitCount) - 1)) << (baseBits - tailBitCount)
 			startPosByte++
 			offsetBitPos = tailBitCount
 		} else {
@@ -214,19 +234,21 @@ func appendBytes(body []byte, buf *bytes.Buffer) {
 	}
 
 	if partialBase32ElemBits > 0 {
-		lastElem := body[bodyLen - 1]
+		lastElem := body[bodyLen-1]
 		base32ElemIndex := lastElem >> (byteSize - partialBase32ElemBits)
 		buf.WriteByte(getBaseChar(base32ElemIndex))
 	}
 }
 
-func decodeBytes(value SemanticID, startPos int, endPos int) ([]byte, error) {
+func decodeBytes(value string, startPos int, endPos int) ([]byte, error) {
 	if startPos < 0 {
-		return nil, ErrInternal // shouldn't happen
+		// shouldn't happen
+		return nil, fmt.Errorf("internal: negative startPos=%d", startPos)
 	}
 
 	if endPos <= startPos {
-		return nil, ErrInternal // shouldn't happen
+		// shouldn't happen
+		return nil, fmt.Errorf("internal: endPos=%d is not greater than startPos=%d", endPos, startPos)
 	}
 
 	length := endPos - startPos
