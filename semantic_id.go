@@ -30,7 +30,11 @@ var (
 
 // GetPrefix returns prefix which is a part of a given semantic ID
 func GetPrefix(maybeSemanticID string) string {
-	return ""
+	lastPrefixIndex := strings.LastIndexByte(maybeSemanticID, prefixSeparator)
+	if lastPrefixIndex <= 0 {
+		return ""
+	}
+	return strings.ToLower(string([]byte(maybeSemanticID)[:lastPrefixIndex+1]))
 }
 
 // IDCodec defines an interface that abstracts out operations on the semantic IDs
@@ -76,7 +80,7 @@ func newBufferWithPrefix(names []string, capacity int) *bytes.Buffer {
 }
 
 func (c *prefixedIDCodec) GetPrefix() string {
-	return newBufferWithPrefix(c.Names).String()
+	return newBufferWithPrefix(c.Names, len(c.Names)*8).String()
 }
 
 func (c *prefixedIDCodec) CanDecode(id string) bool {

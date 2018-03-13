@@ -3,6 +3,7 @@ package semanticid
 import (
 	"bytes"
 	"math/rand"
+	"strings"
 	"testing"
 	"unicode"
 )
@@ -126,7 +127,7 @@ func TestSemanticID(t *testing.T) {
 		}
 	})
 
-	t.Run("decode malformed semantic IDs", func(t *testing.T) {
+	t.Run("decode malformed semantic IDs, get prefix", func(t *testing.T) {
 		prefixes := map[string][]string{
 			"":     {},
 			"abc-": {"abc"},
@@ -138,6 +139,15 @@ func TestSemanticID(t *testing.T) {
 			if err != ErrMalformedID {
 				t.Error("decode shall prohibit empty IDs")
 			}
+
+			assertSamePrefix(t, k, idgen.GetPrefix())
+
+			newID, err := idgen.Encode([]byte{1})
+			if err != nil {
+				t.Fatalf("unable to encode ID: %v", err)
+			}
+
+			assertSamePrefix(t, idgen.GetPrefix(), GetPrefix(newID))
 		}
 	})
 
@@ -167,6 +177,7 @@ func TestSemanticID(t *testing.T) {
 	t.Run("equivalence of ID codecs that use same prefix names in distinct registers", func(t *testing.T) {
 		idgen1 := NewCodecForNames("abc", "def")
 		idgen2 := NewCodecForNames("ABC", "DeF")
+		assertSamePrefix(t, idgen1.GetPrefix(), idgen2.GetPrefix())
 
 		idValue := []byte{1, 2, 3}
 
@@ -183,4 +194,17 @@ func TestSemanticID(t *testing.T) {
 		checkDecodingID(idgen1, id2, idValue, t)
 		checkDecodingID(idgen2, id1, idValue, t)
 	})
+
+	t.Run("get prefix", func(t *testing.T) {
+		assertSamePrefix(t, "", GetPrefix(""))
+		assertSamePrefix(t, "", GetPrefix("123"))
+		assertSamePrefix(t, "a-", GetPrefix("a-1"))
+		assertSamePrefix(t, "a-bb-cc123-", GetPrefix("a-Bb-cC123-1"))
+	})
+}
+
+func assertSamePrefix(t *testing.T, expected string, actual string) {
+	if strings.Compare(expected, actual) != 0 {
+		t.Fatalf("unexpected prefix '%s', wanted '%s'", actual, expected)
+	}
 }
