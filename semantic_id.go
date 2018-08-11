@@ -1,4 +1,4 @@
-package semanticid
+package ids
 
 import (
 	"bytes"
