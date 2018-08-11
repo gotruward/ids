@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/gotruward/semantic-id/gen"
+	"github.com/gotruward/ids/gen"
 )
 
 // MaxBytesIDSize defines upper bound limit for number of bytes in a given semantic ID
