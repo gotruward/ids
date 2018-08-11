@@ -1,0 +1,5 @@
+package: github.com/gotruward/ids
+import:
+- package: github.com/golang/protobuf
+  subpackages:
+  - proto

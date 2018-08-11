@@ -1,4 +1,4 @@
-package ids
+package ids_test
 
 import (
 	"bytes"
@@ -6,22 +6,12 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/golang/protobuf/ptypes/wrappers"
+	"github.com/gotruward/ids"
+	"github.com/gotruward/ids/protoids"
+	"github.com/stretchr/testify/assert"
 )
-
-func checkDecodingID(idgen IDCodec, id string, idValue []byte, t *testing.T) {
-	newIDValue, err := idgen.Decode(id)
-	if err != nil {
-		t.Fatalf("id decoding failed for id=%s, err is not nil: %s", id, err)
-	}
-
-	if bytes.Compare(newIDValue, idValue) != 0 {
-		t.Fatalf(
-			"id decoding is wrong for id=%s: expected value=%s, actual value=%s",
-			id,
-			idValue,
-			newIDValue)
-	}
-}
 
 func TestSemanticID(t *testing.T) {
 
@@ -33,26 +23,23 @@ func TestSemanticID(t *testing.T) {
 			"1802g040": {1, 1, 1, 1, 1},
 		}
 
-		idgen := NewCodecForNames()
+		idgen := ids.NewCodecForNames()
 
 		for k, v := range pairs {
 			id, err := idgen.Encode(v)
-			if err != nil {
-				t.Fatalf("id encoding failed for id=%s, err is not nil: %s", k, err)
+			if !assert.NoError(t, err, "id encoding failed for id=%s, err is not nil: %s", k, err) {
+				continue
 			}
 
-			if id != k {
-				t.Fatalf("id encoding is wrong for expected id: %s, actual: %s", k, id)
-			}
+			assert.Equal(t, id, k, "id encoding is wrong for expected id: %s, actual: %s", k, id)
 
 			newVal, err := idgen.Decode(id)
-			if err != nil {
-				t.Fatalf("id decoding failed for id=%s, err is not nil: %s", k, err)
+			if !assert.NoError(t, err, "id decoding failed for id=%s, err is not nil: %s", k, err) {
+				continue
 			}
 
-			if bytes.Compare(newVal, v) != 0 {
-				t.Fatalf("id decoding is wrong for id=%s: expected value=%s, actual value=%s", k, v, newVal)
-			}
+			assert.Equal(t, 0, bytes.Compare(newVal, v), "id decoding is wrong for id=%s: expected value=%s, actual value=%s",
+				k, v, newVal)
 		}
 	})
 
@@ -64,8 +51,8 @@ func TestSemanticID(t *testing.T) {
 		}
 
 		for _, p := range prefixes {
-			idgen := NewCodecForNames(p...)
-			for i := 1; i <= MaxBytesIDSize; i++ {
+			idgen := ids.NewCodecForNames(p...)
+			for i := 1; i <= ids.MaxBytesIDSize; i++ {
 				idValue := make([]byte, i)
 				rand.Read(idValue)
 
@@ -96,8 +83,8 @@ func TestSemanticID(t *testing.T) {
 		name2 := "users"
 		idValue := []byte{1, 2, 3}
 
-		idgen1 := NewCodecForNames(name1, name2)
-		idgen2 := NewCodecForNames([]string{name1, name2}...)
+		idgen1 := ids.NewCodecForNames(name1, name2)
+		idgen2 := ids.NewCodecForNames([]string{name1, name2}...)
 
 		id1, err := idgen1.Encode(idValue)
 		if err != nil {
@@ -115,14 +102,14 @@ func TestSemanticID(t *testing.T) {
 	})
 
 	t.Run("encode malformed semantic IDs", func(t *testing.T) {
-		idgen := NewCodecForNames("test")
+		idgen := ids.NewCodecForNames("test")
 		_, err := idgen.Encode([]byte{})
-		if err != ErrIDEmpty {
+		if err != ids.ErrIDEmpty {
 			t.Error("empty byte array shall not be encoded")
 		}
 
-		_, err = idgen.Encode(make([]byte, MaxBytesIDSize+1))
-		if err != ErrIDTooBig {
+		_, err = idgen.Encode(make([]byte, ids.MaxBytesIDSize+1))
+		if err != ids.ErrIDTooBig {
 			t.Error("large array should not be encoded")
 		}
 	})
@@ -134,9 +121,9 @@ func TestSemanticID(t *testing.T) {
 			"a-b-": {"a", "b"},
 		}
 		for k, v := range prefixes {
-			idgen := NewCodecForNames(v...)
+			idgen := ids.NewCodecForNames(v...)
 			_, err := idgen.Decode(k)
-			if err != ErrMalformedID {
+			if err != ids.ErrMalformedID {
 				t.Error("decode shall prohibit empty IDs")
 			}
 
@@ -147,7 +134,7 @@ func TestSemanticID(t *testing.T) {
 				t.Fatalf("unable to encode ID: %v", err)
 			}
 
-			assertSamePrefix(t, idgen.GetPrefix(), GetPrefix(newID))
+			assertSamePrefix(t, idgen.GetPrefix(), ids.GetPrefix(newID))
 		}
 	})
 
@@ -158,7 +145,7 @@ func TestSemanticID(t *testing.T) {
 			"a-b-": {"a", "b"},
 		}
 		for k, v := range prefixes {
-			idgen := NewCodecForNames(v...)
+			idgen := ids.NewCodecForNames(v...)
 
 			// sanity check: idgen should allow decoding legitimate IDs
 			_, err := idgen.Decode(k + "00")
@@ -168,15 +155,15 @@ func TestSemanticID(t *testing.T) {
 
 			// actual verification for illegal characters
 			_, err = idgen.Decode(k + "0!")
-			if err != ErrInvalidChar {
+			if err != ids.ErrInvalidChar {
 				t.Error("decode shall prohibit IDs with illegal chars")
 			}
 		}
 	})
 
 	t.Run("equivalence of ID codecs that use same prefix names in distinct registers", func(t *testing.T) {
-		idgen1 := NewCodecForNames("abc", "def")
-		idgen2 := NewCodecForNames("ABC", "DeF")
+		idgen1 := ids.NewCodecForNames("abc", "def")
+		idgen2 := ids.NewCodecForNames("ABC", "DeF")
 		assertSamePrefix(t, idgen1.GetPrefix(), idgen2.GetPrefix())
 
 		idValue := []byte{1, 2, 3}
@@ -196,15 +183,54 @@ func TestSemanticID(t *testing.T) {
 	})
 
 	t.Run("get prefix", func(t *testing.T) {
-		assertSamePrefix(t, "", GetPrefix(""))
-		assertSamePrefix(t, "", GetPrefix("123"))
-		assertSamePrefix(t, "a-", GetPrefix("a-1"))
-		assertSamePrefix(t, "a-bb-cc123-", GetPrefix("a-Bb-cC123-1"))
+		assertSamePrefix(t, "", ids.GetPrefix(""))
+		assertSamePrefix(t, "", ids.GetPrefix("123"))
+		assertSamePrefix(t, "a-", ids.GetPrefix("a-1"))
+		assertSamePrefix(t, "a-bb-cc123-", ids.GetPrefix("a-Bb-cC123-1"))
 	})
 }
+
+func TestEncodingProtoID(t *testing.T) {
+
+	t.Run("Encoding and decoding protobuf ID", func(t *testing.T) {
+		// Given:
+		protoVal := wrappers.StringValue{Value: "test"}
+		idgen := ids.NewCodecForNames("proto", "id")
+
+		// When:
+		id, err := protoids.Encode(idgen, &protoVal)
+
+		// Then:
+		if !assert.NoError(t, err, "unable to encode proto value") {
+			return
+		}
+
+		var restoredProtoVal wrappers.StringValue
+		err = protoids.Decode(idgen, id, &restoredProtoVal)
+		if !assert.NoError(t, err, "unable to dencode proto value for id=%s", id) {
+			return
+		}
+		assert.Equal(t, protoVal.Value, restoredProtoVal.Value, "proto message contents mismatch for id=%s", id)
+	})
+}
+
+//
+// Helpers
+//
 
 func assertSamePrefix(t *testing.T, expected string, actual string) {
 	if strings.Compare(expected, actual) != 0 {
 		t.Fatalf("unexpected prefix '%s', wanted '%s'", actual, expected)
+	}
+}
+
+func checkDecodingID(idgen ids.IDCodec, id string, idValue []byte, t *testing.T) {
+	newIDValue, err := idgen.Decode(id)
+	if assert.NoError(t, err, "id decoding failed for id=%s, err is not nil: %s") {
+		assert.Equal(t, 0, bytes.Compare(newIDValue, idValue),
+			"id decoding is wrong for id=%s: expected value=%s, actual value=%s",
+			id,
+			idValue,
+			newIDValue)
 	}
 }
